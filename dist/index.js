@@ -27661,13 +27661,20 @@ async function run() {
     const body = JSON.stringify(payload);
     const endpoint = `${apiUrl.replace(/\/$/, '')}/v1/api/subscriptions/import/manifest`;
 
+    core.info(`Endpoint: ${endpoint}`);
     const response = await makeRequest(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': apiKey,
+        'User-Agent': 'RiskRaft-Dependency-Sync/1.0',
+        'Accept': 'application/json',
       },
     }, body);
+    core.info(`Response status: ${response.status}`);
+    if (response.status >= 400) {
+      core.info(`Response body: ${JSON.stringify(response.data).substring(0, 500)}`);
+    }
 
     if (response.status === 401) {
       const detail = response.data?.detail || 'Unauthorized';
