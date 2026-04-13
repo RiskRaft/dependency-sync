@@ -27670,12 +27670,14 @@ async function run() {
     }, body);
 
     if (response.status === 401) {
-      core.setFailed('Authentication failed. Check your RiskRaft API key.');
+      const detail = response.data?.detail || 'Unauthorized';
+      core.setFailed(`Authentication failed (401): ${detail}`);
       return;
     }
 
     if (response.status === 403) {
-      core.setFailed('API key does not have write scope. Create a key with write permissions in RiskRaft Settings > API Keys.');
+      const detail = response.data?.detail || 'Forbidden';
+      core.setFailed(`Access denied (403): ${detail}`);
       return;
     }
 
