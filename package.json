@@ -1,0 +1,16 @@
+{
+  "name": "riskraft-dependency-sync",
+  "version": "1.0.0",
+  "description": "GitHub Action to sync dependencies to RiskRaft for vulnerability monitoring",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "ncc build src/index.js -o dist --license licenses.txt",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.3"
+  }
+}

@@ -1,0 +1,38 @@
+name: 'RiskRaft Dependency Sync'
+description: 'Sync your project dependencies to RiskRaft for continuous vulnerability monitoring'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  api-key:
+    description: 'RiskRaft API key (requires write scope). Store as a GitHub secret.'
+    required: true
+  api-url:
+    description: 'RiskRaft API base URL'
+    required: false
+    default: 'https://app.riskraft.io'
+  project-id:
+    description: 'RiskRaft project ID to assign packages to'
+    required: false
+  mode:
+    description: '"add" to append new packages, "replace" to mirror manifest exactly (removes packages no longer in your files)'
+    required: false
+    default: 'replace'
+  manifest-files:
+    description: 'Comma-separated list of manifest file paths (auto-detected if not specified)'
+    required: false
+
+outputs:
+  packages-added:
+    description: 'Number of new packages added'
+  packages-updated:
+    description: 'Number of packages with version updates'
+  packages-removed:
+    description: 'Number of packages removed (replace mode only)'
+  summary:
+    description: 'Human-readable summary of changes'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
