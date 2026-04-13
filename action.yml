@@ -15,6 +15,9 @@ inputs:
   project-id:
     description: 'RiskRaft project ID to assign packages to'
     required: false
+  project-name:
+    description: 'RiskRaft project name (alternative to project-id, resolved server-side)'
+    required: false
   mode:
     description: '"add" to append new packages, "replace" to mirror manifest exactly (removes packages no longer in your files)'
     required: false
