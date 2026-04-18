@@ -2,7 +2,6 @@ const core = require('@actions/core');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const http = require('http');
 
 // Manifest files to auto-detect (in priority order)
 const KNOWN_MANIFESTS = [
@@ -33,9 +32,12 @@ function findManifests(rootDir) {
 function makeRequest(url, options, body) {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
-    const transport = parsedUrl.protocol === 'https:' ? https : http;
+    if (parsedUrl.protocol !== 'https:') {
+      reject(new Error(`Refusing to send request over cleartext ${parsedUrl.protocol} (use an https:// API URL)`));
+      return;
+    }
 
-    const req = transport.request(parsedUrl, options, (res) => {
+    const req = https.request(parsedUrl, options, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
