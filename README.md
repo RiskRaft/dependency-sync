@@ -26,9 +26,9 @@ A GitHub Action that automatically syncs your project's dependencies to [RiskRaf
 | CycloneDX SBOM | Multi |
 | SPDX SBOM | Multi |
 
-## Quick Start (recommended — SBOM mode)
+## Quick Start
 
-Generate a CycloneDX SBOM with [Syft](https://github.com/anchore/syft) and feed it to the action. This avoids the version-range / wildcard / workspace-link parsing pitfalls that come with reading manifest files directly, so you get exact resolved versions for every dependency including transitives:
+The action generates a CycloneDX SBOM with [Syft](https://github.com/anchore/syft) automatically — no extra steps needed. You get exact resolved versions for every dependency (including transitives) instead of the wildcard/range pollution that comes from raw manifest parsing.
 
 ```yaml
 name: RiskRaft Sync
@@ -41,25 +41,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: anchore/sbom-action@v0
-        with:
-          format: cyclonedx-json
-          output-file: sbom.cdx.json
       - uses: riskraft/dependency-sync@v1
         with:
           api-key: ${{ secrets.RISKRAFT_API_KEY }}
-          sbom-file: sbom.cdx.json
 ```
 
-## Quick Start (legacy — manifest mode)
+That's it. On first run the action downloads Syft (~30 MB, cached after) and scans `$GITHUB_WORKSPACE`.
 
-If you can't run an SBOM step, the action will auto-detect manifest files in the workspace root. This path can produce false positives when manifests use ranges (`^1.0.0`), wildcards (`*`), or workspace links — prefer SBOM mode when possible.
+## Bring your own SBOM
+
+If you already produce a CycloneDX or SPDX SBOM upstream (e.g. via `anchore/sbom-action`, `cdxgen`, or a custom step), pass its path:
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: anchore/sbom-action@v0
+  with:
+    format: cyclonedx-json
+    output-file: sbom.cdx.json
 - uses: riskraft/dependency-sync@v1
   with:
     api-key: ${{ secrets.RISKRAFT_API_KEY }}
+    sbom-file: sbom.cdx.json
+```
+
+## Legacy manifest mode
+
+Skip Syft entirely and parse manifest files directly. Not recommended — version ranges (`^1.0.0`), wildcards (`*`), and workspace links can produce false-positive vulnerabilities.
+
+```yaml
+- uses: riskraft/dependency-sync@v1
+  with:
+    api-key: ${{ secrets.RISKRAFT_API_KEY }}
+    legacy-manifest: 'true'
 ```
 
 ## Inputs
@@ -71,8 +83,9 @@ If you can't run an SBOM step, the action will auto-detect manifest files in the
 | `project-id` | No | | Assign packages to a specific RiskRaft project |
 | `project-name` | No | | Alternative to `project-id` (resolved server-side) |
 | `mode` | No | `replace` | `add` = append new packages, `replace` = mirror exactly |
-| `sbom-file` | No | | Path to CycloneDX/SPDX SBOM. **Recommended.** When set, `manifest-files` is ignored. |
-| `manifest-files` | No | Auto-detect | Comma-separated manifest file paths (legacy mode) |
+| `sbom-file` | No | | Path to a pre-generated CycloneDX/SPDX SBOM. Skips auto-generation. |
+| `legacy-manifest` | No | `false` | Set to `true` to skip Syft and parse manifests directly. Not recommended. |
+| `manifest-files` | No | Auto-detect | (Legacy mode) comma-separated manifest paths. |
 
 ## Outputs
 

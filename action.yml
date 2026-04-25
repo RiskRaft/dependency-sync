@@ -26,8 +26,12 @@ inputs:
     description: 'Comma-separated list of manifest file paths (auto-detected if not specified)'
     required: false
   sbom-file:
-    description: 'Path to a CycloneDX or SPDX SBOM file (recommended). When set, manifest-files is ignored and the SBOM is the sole input — produces accurate exact-version data with no wildcard / range pollution. Pair with anchore/sbom-action to generate one.'
+    description: 'Path to a pre-generated CycloneDX or SPDX SBOM. If unset, the action auto-generates one with Syft against $GITHUB_WORKSPACE.'
     required: false
+  legacy-manifest:
+    description: 'Set to "true" to skip Syft and use raw manifest parsing (legacy behavior). Not recommended — manifest ranges/wildcards can produce false-positive vulnerabilities. Default: false.'
+    required: false
+    default: 'false'
 
 outputs:
   packages-added:

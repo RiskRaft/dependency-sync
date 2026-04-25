@@ -1,7 +1,46 @@
 const core = require('@actions/core');
+const tc = require('@actions/tool-cache');
+const exec = require('@actions/exec');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const https = require('https');
+
+// Pinned Syft version. Bump deliberately when validating a new release.
+const SYFT_VERSION = '1.18.1';
+
+async function ensureSyft() {
+  // Check the per-runner tool cache first.
+  let dir = tc.find('syft', SYFT_VERSION);
+  if (dir) {
+    return path.join(dir, process.platform === 'win32' ? 'syft.exe' : 'syft');
+  }
+
+  // Map node platform/arch → Syft release artifact.
+  const platformMap = { linux: 'linux', darwin: 'darwin', win32: 'windows' };
+  const archMap     = { x64: 'amd64', arm64: 'arm64' };
+  const plat = platformMap[process.platform];
+  const arch = archMap[process.arch];
+  if (!plat || !arch) {
+    throw new Error(`Unsupported platform/arch for Syft: ${process.platform}/${process.arch}`);
+  }
+  const ext = plat === 'windows' ? 'zip' : 'tar.gz';
+  const url = `https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_${plat}_${arch}.${ext}`;
+
+  core.info(`Downloading Syft ${SYFT_VERSION} (${plat}/${arch})…`);
+  const archive = await tc.downloadTool(url);
+  const extracted = ext === 'zip' ? await tc.extractZip(archive) : await tc.extractTar(archive);
+  dir = await tc.cacheDir(extracted, 'syft', SYFT_VERSION);
+  return path.join(dir, plat === 'windows' ? 'syft.exe' : 'syft');
+}
+
+async function generateSbom(scanRoot) {
+  const syft = await ensureSyft();
+  const out = path.join(os.tmpdir(), `riskraft-sbom-${Date.now()}.cdx.json`);
+  // dir:<path> tells Syft to scan a filesystem, not an OCI image.
+  await exec.exec(syft, [`dir:${scanRoot}`, '-o', `cyclonedx-json=${out}`, '-q']);
+  return out;
+}
 
 // Manifest files to auto-detect (in priority order)
 const KNOWN_MANIFESTS = [
@@ -64,8 +103,13 @@ async function run() {
     const mode = core.getInput('mode') || 'replace';
     const manifestInput = core.getInput('manifest-files') || '';
     const sbomFile = core.getInput('sbom-file') || '';
+    const legacyManifest = (core.getInput('legacy-manifest') || '').toLowerCase() === 'true';
+    const workspace = process.env.GITHUB_WORKSPACE || '.';
 
-    // Build the file payload — SBOM mode takes precedence over manifest auto-detect.
+    // Resolution order:
+    //   1. sbom-file: caller passed an SBOM, send it as-is.
+    //   2. manifest-files OR legacy-manifest=true: read raw manifests (back-compat).
+    //   3. default: generate a CycloneDX SBOM via Syft against $GITHUB_WORKSPACE.
     let files;
     if (sbomFile) {
       if (!fs.existsSync(sbomFile)) {
@@ -77,7 +121,7 @@ async function run() {
         content: fs.readFileSync(sbomFile, 'utf-8'),
       }];
       core.info(`Syncing SBOM: ${sbomFile}`);
-    } else {
+    } else if (manifestInput || legacyManifest) {
       let manifestPaths;
       if (manifestInput) {
         manifestPaths = manifestInput.split(',').map(f => f.trim()).filter(Boolean);
@@ -88,7 +132,6 @@ async function run() {
         }
         manifestPaths = manifestPaths.filter(p => fs.existsSync(p));
       } else {
-        const workspace = process.env.GITHUB_WORKSPACE || '.';
         manifestPaths = findManifests(workspace);
         core.info(`Auto-detected ${manifestPaths.length} manifest file(s)`);
       }
@@ -105,6 +148,29 @@ async function run() {
       }));
 
       core.info(`Syncing ${files.length} manifest(s): ${files.map(f => f.filename).join(', ')}`);
+    } else {
+      // Default path — generate a clean SBOM with Syft against the workspace.
+      try {
+        const sbomPath = await generateSbom(workspace);
+        const stat = fs.statSync(sbomPath);
+        files = [{
+          filename: 'sbom.cdx.json',
+          content: fs.readFileSync(sbomPath, 'utf-8'),
+        }];
+        core.info(`Generated SBOM (${(stat.size / 1024).toFixed(1)} KB) and syncing`);
+      } catch (e) {
+        core.warning(`SBOM generation failed (${e.message}); falling back to manifest auto-detect`);
+        const manifestPaths = findManifests(workspace);
+        if (manifestPaths.length === 0) {
+          core.setFailed('SBOM generation failed and no manifest files were found in workspace.');
+          return;
+        }
+        files = manifestPaths.map(filePath => ({
+          filename: path.basename(filePath),
+          content: fs.readFileSync(filePath, 'utf-8'),
+        }));
+        core.info(`Fell back to ${files.length} manifest(s): ${files.map(f => f.filename).join(', ')}`);
+      }
     }
 
     // Build request
