@@ -33937,7 +33937,22 @@ async function generateSbom(scanRoot) {
   const syft = await ensureSyft();
   const out = path.join(os.tmpdir(), `riskraft-sbom-${Date.now()}.cdx.json`);
   // dir:<path> tells Syft to scan a filesystem, not an OCI image.
-  await exec.exec(syft, [`dir:${scanRoot}`, '-o', `cyclonedx-json=${out}`, '-q']);
+  // Exclusions:
+  //   .github/   — Syft's github-actions cataloger treats `uses:` refs as npm pkgs
+  //   node_modules/ — already covered by lockfiles; avoids double-counting and
+  //                   bundling the action runner's own node_modules
+  //   vendor/, target/, build/, dist/ — vendored or build outputs that pollute
+  await exec.exec(syft, [
+    `dir:${scanRoot}`,
+    '--exclude', './.github/**',
+    '--exclude', '**/node_modules/**',
+    '--exclude', '**/vendor/**',
+    '--exclude', '**/target/**',
+    '--exclude', '**/build/**',
+    '--exclude', '**/dist/**',
+    '-o', `cyclonedx-json=${out}`,
+    '-q',
+  ]);
   return out;
 }
 
