@@ -33958,7 +33958,16 @@ async function generateSbom(scanRoot, extraExcludes = []) {
     args.push('--exclude', pat);
   }
   args.push('-o', `cyclonedx-json=${out}`, '-q');
+  core.info(`Syft args: ${args.join(' ')}`);
   await exec.exec(syft, args);
+  // Log component count so the run log captures it without needing the SBOM file.
+  try {
+    const sbom = JSON.parse(fs.readFileSync(out, 'utf-8'));
+    const n = (sbom.components || []).length;
+    core.info(`SBOM components: ${n}`);
+  } catch {
+    /* fall through */
+  }
   return out;
 }
 
