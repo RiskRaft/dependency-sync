@@ -32,6 +32,14 @@ inputs:
     description: 'Set to "true" to skip Syft and use raw manifest parsing (legacy behavior). Not recommended — manifest ranges/wildcards can produce false-positive vulnerabilities. Default: false.'
     required: false
     default: 'false'
+  path:
+    description: 'Subdirectory (relative to $GITHUB_WORKSPACE) to scan with Syft. Defaults to the full workspace. Use this to track multiple sub-projects as separate RiskRaft projects.'
+    required: false
+    default: ''
+  extra-exclude:
+    description: 'Comma-separated extra Syft --exclude patterns. Example: "./frontend_src/**,./landing_src/**" to skip those subprojects when scanning the workspace root.'
+    required: false
+    default: ''
 
 outputs:
   packages-added:

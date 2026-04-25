@@ -34,7 +34,7 @@ async function ensureSyft() {
   return path.join(dir, plat === 'windows' ? 'syft.exe' : 'syft');
 }
 
-async function generateSbom(scanRoot) {
+async function generateSbom(scanRoot, extraExcludes = []) {
   const syft = await ensureSyft();
   const out = path.join(os.tmpdir(), `riskraft-sbom-${Date.now()}.cdx.json`);
   // dir:<path> tells Syft to scan a filesystem, not an OCI image.
@@ -43,7 +43,8 @@ async function generateSbom(scanRoot) {
   //   node_modules/ — already covered by lockfiles; avoids double-counting and
   //                   bundling the action runner's own node_modules
   //   vendor/, target/, build/, dist/ — vendored or build outputs that pollute
-  await exec.exec(syft, [
+  //   github-action/ — action source dirs ship @actions/* deps unrelated to host
+  const args = [
     `dir:${scanRoot}`,
     '--exclude', './.github/**',
     '--exclude', '**/node_modules/**',
@@ -51,15 +52,14 @@ async function generateSbom(scanRoot) {
     '--exclude', '**/target/**',
     '--exclude', '**/build/**',
     '--exclude', '**/dist/**',
-    // Exclude any dir that looks like a GitHub Action source — its
-    // package.json lists @actions/* runtime deps that aren't part of
-    // the host project. Most repos won't have these dirs; harmless if
-    // absent.
     '--exclude', '**/github-action/**',
     '--exclude', '**/.github-action/**',
-    '-o', `cyclonedx-json=${out}`,
-    '-q',
-  ]);
+  ];
+  for (const pat of extraExcludes) {
+    args.push('--exclude', pat);
+  }
+  args.push('-o', `cyclonedx-json=${out}`, '-q');
+  await exec.exec(syft, args);
   return out;
 }
 
@@ -125,7 +125,16 @@ async function run() {
     const manifestInput = core.getInput('manifest-files') || '';
     const sbomFile = core.getInput('sbom-file') || '';
     const legacyManifest = (core.getInput('legacy-manifest') || '').toLowerCase() === 'true';
+    const pathInput = core.getInput('path') || '';
+    const extraExcludeInput = core.getInput('extra-exclude') || '';
     const workspace = process.env.GITHUB_WORKSPACE || '.';
+    const scanRoot = pathInput
+      ? path.resolve(workspace, pathInput)
+      : workspace;
+    const extraExcludes = extraExcludeInput
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
 
     // Resolution order:
     //   1. sbom-file: caller passed an SBOM, send it as-is.
@@ -170,9 +179,10 @@ async function run() {
 
       core.info(`Syncing ${files.length} manifest(s): ${files.map(f => f.filename).join(', ')}`);
     } else {
-      // Default path — generate a clean SBOM with Syft against the workspace.
+      // Default path — generate a clean SBOM with Syft against the scan root.
       try {
-        const sbomPath = await generateSbom(workspace);
+        core.info(`Scanning ${scanRoot}${extraExcludes.length ? ` (extra excludes: ${extraExcludes.join(', ')})` : ''}`);
+        const sbomPath = await generateSbom(scanRoot, extraExcludes);
         const stat = fs.statSync(sbomPath);
         files = [{
           filename: 'sbom.cdx.json',
@@ -181,9 +191,9 @@ async function run() {
         core.info(`Generated SBOM (${(stat.size / 1024).toFixed(1)} KB) and syncing`);
       } catch (e) {
         core.warning(`SBOM generation failed (${e.message}); falling back to manifest auto-detect`);
-        const manifestPaths = findManifests(workspace);
+        const manifestPaths = findManifests(scanRoot);
         if (manifestPaths.length === 0) {
-          core.setFailed('SBOM generation failed and no manifest files were found in workspace.');
+          core.setFailed('SBOM generation failed and no manifest files were found in scan root.');
           return;
         }
         files = manifestPaths.map(filePath => ({
@@ -200,6 +210,10 @@ async function run() {
       payload.project_id = projectId;
     } else if (projectName) {
       payload.project_name = projectName;
+      // Auto-create the project on first sync if it doesn't already exist.
+      // Without this the API returns 404 and the user has to create it manually
+      // through the UI before the workflow can succeed.
+      payload.create_if_missing = true;
     }
 
     const body = JSON.stringify(payload);
