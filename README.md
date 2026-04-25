@@ -26,28 +26,40 @@ A GitHub Action that automatically syncs your project's dependencies to [RiskRaf
 | CycloneDX SBOM | Multi |
 | SPDX SBOM | Multi |
 
-## Quick Start
+## Quick Start (recommended — SBOM mode)
+
+Generate a CycloneDX SBOM with [Syft](https://github.com/anchore/syft) and feed it to the action. This avoids the version-range / wildcard / workspace-link parsing pitfalls that come with reading manifest files directly, so you get exact resolved versions for every dependency including transitives:
 
 ```yaml
 name: RiskRaft Sync
 on:
   push:
     branches: [main]
-    paths:
-      - 'requirements.txt'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'go.mod'
-      - 'Cargo.toml'
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
       - uses: riskraft/dependency-sync@v1
         with:
           api-key: ${{ secrets.RISKRAFT_API_KEY }}
+          sbom-file: sbom.cdx.json
+```
+
+## Quick Start (legacy — manifest mode)
+
+If you can't run an SBOM step, the action will auto-detect manifest files in the workspace root. This path can produce false positives when manifests use ranges (`^1.0.0`), wildcards (`*`), or workspace links — prefer SBOM mode when possible.
+
+```yaml
+- uses: actions/checkout@v4
+- uses: riskraft/dependency-sync@v1
+  with:
+    api-key: ${{ secrets.RISKRAFT_API_KEY }}
 ```
 
 ## Inputs
@@ -57,8 +69,10 @@ jobs:
 | `api-key` | Yes | | RiskRaft API key with write scope |
 | `api-url` | No | `https://app.riskraft.io` | RiskRaft API base URL |
 | `project-id` | No | | Assign packages to a specific RiskRaft project |
-| `mode` | No | `replace` | `add` = append new packages, `replace` = mirror manifest exactly |
-| `manifest-files` | No | Auto-detect | Comma-separated list of file paths |
+| `project-name` | No | | Alternative to `project-id` (resolved server-side) |
+| `mode` | No | `replace` | `add` = append new packages, `replace` = mirror exactly |
+| `sbom-file` | No | | Path to CycloneDX/SPDX SBOM. **Recommended.** When set, `manifest-files` is ignored. |
+| `manifest-files` | No | Auto-detect | Comma-separated manifest file paths (legacy mode) |
 
 ## Outputs
 

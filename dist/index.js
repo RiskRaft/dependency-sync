@@ -31401,37 +31401,49 @@ async function run() {
     const projectName = core.getInput('project-name') || null;
     const mode = core.getInput('mode') || 'replace';
     const manifestInput = core.getInput('manifest-files') || '';
+    const sbomFile = core.getInput('sbom-file') || '';
 
-    // Find manifest files
-    let manifestPaths;
-    if (manifestInput) {
-      manifestPaths = manifestInput.split(',').map(f => f.trim()).filter(Boolean);
-      // Validate they exist
-      for (const p of manifestPaths) {
-        if (!fs.existsSync(p)) {
-          core.warning(`Manifest file not found: ${p}`);
-        }
+    // Build the file payload — SBOM mode takes precedence over manifest auto-detect.
+    let files;
+    if (sbomFile) {
+      if (!fs.existsSync(sbomFile)) {
+        core.setFailed(`SBOM file not found: ${sbomFile}`);
+        return;
       }
-      manifestPaths = manifestPaths.filter(p => fs.existsSync(p));
+      files = [{
+        filename: path.basename(sbomFile),
+        content: fs.readFileSync(sbomFile, 'utf-8'),
+      }];
+      core.info(`Syncing SBOM: ${sbomFile}`);
     } else {
-      const workspace = process.env.GITHUB_WORKSPACE || '.';
-      manifestPaths = findManifests(workspace);
-      core.info(`Auto-detected ${manifestPaths.length} manifest file(s)`);
+      let manifestPaths;
+      if (manifestInput) {
+        manifestPaths = manifestInput.split(',').map(f => f.trim()).filter(Boolean);
+        for (const p of manifestPaths) {
+          if (!fs.existsSync(p)) {
+            core.warning(`Manifest file not found: ${p}`);
+          }
+        }
+        manifestPaths = manifestPaths.filter(p => fs.existsSync(p));
+      } else {
+        const workspace = process.env.GITHUB_WORKSPACE || '.';
+        manifestPaths = findManifests(workspace);
+        core.info(`Auto-detected ${manifestPaths.length} manifest file(s)`);
+      }
+
+      if (manifestPaths.length === 0) {
+        core.warning('No manifest files found. Nothing to sync.');
+        core.setOutput('summary', 'No manifest files found');
+        return;
+      }
+
+      files = manifestPaths.map(filePath => ({
+        filename: path.basename(filePath),
+        content: fs.readFileSync(filePath, 'utf-8'),
+      }));
+
+      core.info(`Syncing ${files.length} manifest(s): ${files.map(f => f.filename).join(', ')}`);
     }
-
-    if (manifestPaths.length === 0) {
-      core.warning('No manifest files found. Nothing to sync.');
-      core.setOutput('summary', 'No manifest files found');
-      return;
-    }
-
-    // Read file contents
-    const files = manifestPaths.map(filePath => ({
-      filename: path.basename(filePath),
-      content: fs.readFileSync(filePath, 'utf-8'),
-    }));
-
-    core.info(`Syncing ${files.length} manifest(s): ${files.map(f => f.filename).join(', ')}`);
 
     // Build request
     const payload = { files, mode };

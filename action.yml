@@ -25,6 +25,9 @@ inputs:
   manifest-files:
     description: 'Comma-separated list of manifest file paths (auto-detected if not specified)'
     required: false
+  sbom-file:
+    description: 'Path to a CycloneDX or SPDX SBOM file (recommended). When set, manifest-files is ignored and the SBOM is the sole input — produces accurate exact-version data with no wildcard / range pollution. Pair with anchore/sbom-action to generate one.'
+    required: false
 
 outputs:
   packages-added:
