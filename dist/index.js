@@ -33950,6 +33950,12 @@ async function generateSbom(scanRoot) {
     '--exclude', '**/target/**',
     '--exclude', '**/build/**',
     '--exclude', '**/dist/**',
+    // Exclude any dir that looks like a GitHub Action source — its
+    // package.json lists @actions/* runtime deps that aren't part of
+    // the host project. Most repos won't have these dirs; harmless if
+    // absent.
+    '--exclude', '**/github-action/**',
+    '--exclude', '**/.github-action/**',
     '-o', `cyclonedx-json=${out}`,
     '-q',
   ]);
