@@ -40,6 +40,10 @@ inputs:
     description: 'Comma-separated extra Syft --exclude patterns. Example: "./frontend_src/**,./landing_src/**" to skip those subprojects when scanning the workspace root.'
     required: false
     default: ''
+  include-dev:
+    description: 'Set to "true" to include npm devDependencies in the SBOM. Dev deps carry real advisories (build tooling, bundler plugins); default excludes them to keep host projects lean.'
+    required: false
+    default: 'false'
 
 outputs:
   packages-added:

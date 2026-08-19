@@ -34,7 +34,7 @@ async function ensureSyft() {
   return path.join(dir, plat === 'windows' ? 'syft.exe' : 'syft');
 }
 
-async function generateSbom(scanRoot, extraExcludes = []) {
+async function generateSbom(scanRoot, extraExcludes = [], includeDev = false) {
   const syft = await ensureSyft();
   const out = path.join(os.tmpdir(), `riskraft-sbom-${Date.now()}.cdx.json`);
   // dir:<path> tells Syft to scan a filesystem, not an OCI image.
@@ -60,7 +60,15 @@ async function generateSbom(scanRoot, extraExcludes = []) {
   }
   args.push('-o', `cyclonedx-json=${out}`, '-q');
   core.info(`Syft args: ${args.join(' ')}`);
-  await exec.exec(syft, args);
+  // include-dev: Syft's javascript cataloger drops npm devDependencies by
+  // default. Dev deps carry real advisories (postcss, nanoid, undici...),
+  // so consumers can opt in. Env passthrough keeps the pre-input escape
+  // hatch (SYFT_JAVASCRIPT_INCLUDE_DEV_DEPENDENCIES in the job env) working.
+  const env = { ...process.env };
+  if (includeDev) {
+    env.SYFT_JAVASCRIPT_INCLUDE_DEV_DEPENDENCIES = 'true';
+  }
+  await exec.exec(syft, args, { env });
   // Log component count so the run log captures it without needing the SBOM file.
   try {
     const sbom = JSON.parse(fs.readFileSync(out, 'utf-8'));
@@ -136,6 +144,7 @@ async function run() {
     const legacyManifest = (core.getInput('legacy-manifest') || '').toLowerCase() === 'true';
     const pathInput = core.getInput('path') || '';
     const extraExcludeInput = core.getInput('extra-exclude') || '';
+    const includeDev = (core.getInput('include-dev') || '').toLowerCase() === 'true';
     const workspace = process.env.GITHUB_WORKSPACE || '.';
     const scanRoot = pathInput
       ? path.resolve(workspace, pathInput)
@@ -191,7 +200,7 @@ async function run() {
       // Default path — generate a clean SBOM with Syft against the scan root.
       try {
         core.info(`Scanning ${scanRoot}${extraExcludes.length ? ` (extra excludes: ${extraExcludes.join(', ')})` : ''}`);
-        const sbomPath = await generateSbom(scanRoot, extraExcludes);
+        const sbomPath = await generateSbom(scanRoot, extraExcludes, includeDev);
         const stat = fs.statSync(sbomPath);
         files = [{
           filename: 'sbom.cdx.json',
